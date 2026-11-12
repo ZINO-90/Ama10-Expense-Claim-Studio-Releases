@@ -1,0 +1,32 @@
+name: 공개 설치 파일 배포
+on:
+  push:
+    branches: [publish]
+permissions:
+  contents: write
+concurrency:
+  group: public-release
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - name: 배포 파일 검증
+        run: |
+          node -e 'const fs=require("fs"),crypto=require("crypto"),u=JSON.parse(fs.readFileSync("update.json"));if(u.application!=="Amaranth10 Expense Claim Studio"||!/^\d+\.\d{3}$/.test(u.version)||!u.url.startsWith("https://github.com/ZINO-90/Ama10-Expense-Claim-Studio-Releases/releases/download/v"+u.version+"/"))throw Error("Invalid release");const p=u.url.split("/").pop(),b=fs.readFileSync(p);if(b.length!==u.size||crypto.createHash("sha256").update(b).digest("hex")!==u.sha256)throw Error("Checksum mismatch");fs.appendFileSync(process.env.GITHUB_ENV,"RELEASE_VERSION="+u.version+"\nRELEASE_FILE="+p+"\n");'
+      - name: 공개 Releases에 등록
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "v$RELEASE_VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo '이미 공개된 버전은 변경하지 않습니다.'
+          else
+            gh release create "v$RELEASE_VERSION" "$RELEASE_FILE" update.json CHECKSUMS.txt --repo "$GITHUB_REPOSITORY" --target main --title "Amaranth10 Expense Claim Studio v$RELEASE_VERSION" --notes-file release-notes.md --latest
+          fi
+      - name: 임시 전송 브랜치 정리
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/publish"
